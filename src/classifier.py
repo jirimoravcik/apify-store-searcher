@@ -1,34 +1,46 @@
-"""ML-based category classifier using sentence embeddings and actor metadata."""
+"""ML-based category classifier using TF-IDF and cosine similarity."""
 
 from __future__ import annotations
 
 import numpy as np
 from apify import Actor
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from .categories import CATEGORY_EXEMPLARS, CATEGORIES
 
 
 class CategoryClassifier:
-    """Classifies Actors into categories using semantic similarity and metadata signals."""
+    """Classifies Actors into categories using TF-IDF similarity and metadata signals."""
 
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        """
-        Initialize the classifier with a sentence transformer model.
+    def __init__(self):
+        """Initialize the classifier with TF-IDF vectorizer."""
+        self._vectorizer = TfidfVectorizer(
+            max_features=5000,
+            stop_words="english",
+            ngram_range=(1, 2),  # Use unigrams and bigrams
+        )
+        self._exemplar_vectors: dict[str, np.ndarray] = {}
+        self._is_fitted = False
 
-        Args:
-            model_name: Name of the sentence-transformers model to use
-        """
-        self.model = SentenceTransformer(model_name)
-        self._exemplar_embeddings: dict[str, np.ndarray] = {}
-        self._initialize_exemplars()
+    def _get_all_exemplar_texts(self) -> list[str]:
+        """Get all exemplar texts for fitting the vectorizer."""
+        texts = []
+        for exemplars in CATEGORY_EXEMPLARS.values():
+            texts.extend(exemplars)
+        return texts
 
-    def _initialize_exemplars(self) -> None:
-        """Pre-compute embeddings for all category exemplars."""
+    def _fit_vectorizer(self, actor_texts: list[str]) -> None:
+        """Fit the vectorizer on exemplars + actor texts for better vocabulary."""
+        all_texts = self._get_all_exemplar_texts() + actor_texts
+        self._vectorizer.fit(all_texts)
+
+        # Pre-compute exemplar vectors
         for category, exemplars in CATEGORY_EXEMPLARS.items():
-            embeddings = self.model.encode(exemplars, convert_to_numpy=True)
-            self._exemplar_embeddings[category] = embeddings
+            vectors = self._vectorizer.transform(exemplars)
+            self._exemplar_vectors[category] = vectors
+
+        self._is_fitted = True
 
     def _build_rich_text(self, actor: dict) -> str:
         """
@@ -206,7 +218,6 @@ class CategoryClassifier:
 
         # Pricing model signals
         pricing_info = actor.get("currentPricingInfo", {})
-        pricing_model = pricing_info.get("pricingModel", "")
 
         # Check for MCP-related pricing events
         pricing_per_event = pricing_info.get("pricingPerEvent", {})
@@ -224,65 +235,39 @@ class CategoryClassifier:
                     adjustments["AGENTS"] += 0.15
                     break  # Only apply once
 
+        # === Quality signals: ratings, users, reviews ===
+        # These boost ALL categories uniformly based on Actor quality/popularity
+
+        # User count - logarithmic scaling (more users = better)
+        total_users = actor.get("stats", {}).get("totalUsers", 0) or actor.get("totalUsers", 0) or 0
+        if total_users >= 1000:
+            quality_boost = 0.4
+        elif total_users >= 100:
+            quality_boost = 0.25
+        elif total_users >= 10:
+            quality_boost = 0.1
+        else:
+            quality_boost = 0.0
+
+        # Rating score (0-5 scale typically)
+        stats = actor.get("stats", {})
+        avg_rating = stats.get("averageRating") or actor.get("averageRating")
+        review_count = stats.get("totalReviews") or actor.get("totalReviews") or 0
+
+        if avg_rating is not None and review_count > 0:
+            # High rating with reviews is a strong signal
+            if avg_rating >= 4.5 and review_count >= 5:
+                quality_boost += 0.3
+            elif avg_rating >= 4.0 and review_count >= 3:
+                quality_boost += 0.2
+            elif avg_rating >= 3.5 and review_count >= 1:
+                quality_boost += 0.1
+
+        # Apply quality boost to all categories
+        for cat in CATEGORIES:
+            adjustments[cat] += quality_boost
+
         return adjustments
-
-    def encode_text(self, text: str) -> np.ndarray:
-        """Encode a single text string to embedding."""
-        return self.model.encode(text, convert_to_numpy=True)
-
-    def encode_batch(self, texts: list[str], batch_size: int = 32) -> np.ndarray:
-        """Encode multiple texts to embeddings."""
-        return self.model.encode(
-            texts, batch_size=batch_size, convert_to_numpy=True, show_progress_bar=False
-        )
-
-    def get_category_scores(self, text: str) -> dict[str, float]:
-        """
-        Compute similarity scores for all categories based on text.
-
-        Args:
-            text: Rich text representation of the actor
-
-        Returns:
-            Dict mapping category names to similarity scores
-        """
-        text_embedding = self.encode_text(text).reshape(1, -1)
-        scores = {}
-
-        for category, exemplar_embeddings in self._exemplar_embeddings.items():
-            # Compute cosine similarity to all exemplars
-            similarities = cosine_similarity(text_embedding, exemplar_embeddings)[0]
-            # Use max similarity as category score
-            scores[category] = float(np.max(similarities))
-
-        return scores
-
-    def classify_actor(self, actor: dict, top_k: int = 5) -> list[tuple[str, float]]:
-        """
-        Classify an Actor into categories using all available data.
-
-        Args:
-            actor: Full actor dict from Store API
-            top_k: Number of top categories to return
-
-        Returns:
-            List of (category, score) tuples, sorted by score descending
-        """
-        # Build rich text from all actor data
-        rich_text = self._build_rich_text(actor)
-
-        # Get base scores from semantic similarity
-        scores = self.get_category_scores(rich_text)
-
-        # Apply metadata-based adjustments (no cap - let scores differentiate)
-        adjustments = self._compute_metadata_scores(actor)
-        for category, adjustment in adjustments.items():
-            if category in scores:
-                scores[category] = scores[category] + adjustment
-
-        # Sort and return top_k
-        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        return sorted_scores[:top_k]
 
     def rerank_actors(
         self, actors: list[dict], category_filter: str | None = None, sort: bool = True
@@ -290,7 +275,7 @@ class CategoryClassifier:
         """
         Compute ML scores for actors and optionally re-rank them.
 
-        Uses batch encoding and matrix multiplications for efficient computation.
+        Uses TF-IDF vectorization for fast computation.
 
         Args:
             actors: List of full actor dicts from Store API
@@ -304,45 +289,41 @@ class CategoryClassifier:
             return actors
 
         num_actors = len(actors)
-        Actor.log.info(f"[ML] Starting ML scoring for {num_actors} actors...")
+        Actor.log.info(f"[ML] Starting ML scoring for {num_actors} Actors...")
 
         # Step 1: Build rich text for all actors
-        Actor.log.info("[ML] Step 1/5: Building rich text representations...")
+        Actor.log.info("[ML] Step 1/4: Building rich text representations...")
         texts = [self._build_rich_text(actor) for actor in actors]
-        Actor.log.info(f"[ML] Step 1/5: Done building {len(texts)} text representations")
+        Actor.log.info(f"[ML] Step 1/4: Done building {len(texts)} text representations")
 
-        # Step 2: Batch encode all texts at once (much faster than individual encoding)
-        Actor.log.info(f"[ML] Step 2/5: Encoding {num_actors} texts (this is the slow part)...")
-        actor_embeddings = self.encode_batch(texts)  # Shape: (num_actors, embedding_dim)
-        Actor.log.info(f"[ML] Step 2/5: Done encoding, shape: {actor_embeddings.shape}")
+        # Step 2: Fit vectorizer and transform texts
+        Actor.log.info("[ML] Step 2/4: Fitting TF-IDF vectorizer and transforming texts...")
+        self._fit_vectorizer(texts)
+        actor_vectors = self._vectorizer.transform(texts)
+        Actor.log.info(f"[ML] Step 2/4: Done, vocabulary size: {len(self._vectorizer.vocabulary_)}")
 
-        # Step 3: Compute all category scores via matrix multiplication
-        # For each category, we have exemplar embeddings of shape (num_exemplars, embedding_dim)
-        # We want max similarity to any exemplar for each actor-category pair
-        category_names = list(self._exemplar_embeddings.keys())
+        # Step 3: Compute all category scores via cosine similarity
+        category_names = list(self._exemplar_vectors.keys())
         all_scores = np.zeros((len(actors), len(category_names)))
 
-        Actor.log.info(f"[ML] Step 3/5: Computing similarity scores for {len(category_names)} categories...")
+        Actor.log.info(f"[ML] Step 3/4: Computing similarity scores for {len(category_names)} categories...")
         for cat_idx, category in enumerate(category_names):
-            exemplar_embs = self._exemplar_embeddings[category]  # (num_exemplars, embedding_dim)
-            # Matrix multiplication: (num_actors, embedding_dim) @ (embedding_dim, num_exemplars)
-            # Result: (num_actors, num_exemplars) - similarity of each actor to each exemplar
-            similarities = cosine_similarity(actor_embeddings, exemplar_embs)
+            exemplar_vecs = self._exemplar_vectors[category]
+            # Compute similarity of each actor to each exemplar
+            similarities = cosine_similarity(actor_vectors, exemplar_vecs)
             # Take max similarity across exemplars for each actor
             all_scores[:, cat_idx] = similarities.max(axis=1)
-        Actor.log.info("[ML] Step 3/5: Done computing category similarities")
 
-        # Step 4: Apply metadata adjustments (vectorized where possible)
-        Actor.log.info("[ML] Step 4/5: Applying metadata adjustments...")
+        # Apply metadata adjustments
         for actor_idx, actor in enumerate(actors):
             adjustments = self._compute_metadata_scores(actor)
             for cat_idx, category in enumerate(category_names):
                 if category in adjustments:
                     all_scores[actor_idx, cat_idx] += adjustments[category]
-        Actor.log.info("[ML] Step 4/5: Done applying metadata adjustments")
+        Actor.log.info("[ML] Step 3/4: Done computing category similarities")
 
-        # Step 5: Assign scores back to actors
-        Actor.log.info("[ML] Step 5/5: Assigning scores to actors...")
+        # Step 4: Assign scores back to actors
+        Actor.log.info("[ML] Step 4/4: Assigning scores to Actors...")
         for actor_idx, actor in enumerate(actors):
             scores = {cat: float(all_scores[actor_idx, cat_idx]) for cat_idx, cat in enumerate(category_names)}
             actor["_ml_scores"] = scores
@@ -353,7 +334,7 @@ class CategoryClassifier:
             else:
                 actor["_ml_rank_score"] = float(all_scores[actor_idx].max())
 
-        Actor.log.info(f"[ML] Step 5/5: Done! ML scoring complete for {num_actors} actors")
+        Actor.log.info(f"[ML] Step 4/4: Done! ML scoring complete for {num_actors} Actors")
 
         # Sort by ML rank score (descending) only if requested
         if sort:

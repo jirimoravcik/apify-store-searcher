@@ -16,7 +16,8 @@ if TYPE_CHECKING:
     from .classifier import CategoryClassifier
 
 
-# Cache keys for Key-Value Store
+# Named Key-Value Store for persistence across runs
+KV_STORE_NAME = "apify-store-searcher-cache"
 CACHE_ACTORS_KEY = "actor_database"
 CACHE_METADATA_KEY = "cache_metadata"
 
@@ -58,7 +59,7 @@ class StoreCache:
         if self._initialized:
             return
 
-        Actor.log.info("Loading actor database from Key-Value Store...")
+        Actor.log.info("Loading Actor database from Key-Value Store...")
 
         # Try to load from Key-Value Store first
         loaded = await self._load_from_kv_store()
@@ -79,7 +80,7 @@ class StoreCache:
     async def _load_from_kv_store(self) -> bool:
         """Load database from Apify Key-Value Store."""
         try:
-            kv_store = await Actor.open_key_value_store()
+            kv_store = await Actor.open_key_value_store(name=KV_STORE_NAME)
 
             # Load metadata
             metadata = await kv_store.get_value(CACHE_METADATA_KEY)
@@ -106,7 +107,7 @@ class StoreCache:
     async def _save_to_kv_store(self) -> None:
         """Save database to Apify Key-Value Store."""
         try:
-            kv_store = await Actor.open_key_value_store()
+            kv_store = await Actor.open_key_value_store(name=KV_STORE_NAME)
 
             # Save actor database
             await kv_store.set_value(
@@ -155,7 +156,7 @@ class StoreCache:
 
     async def _refresh_database(self) -> None:
         """Fetch all actors from API and rebuild the database."""
-        Actor.log.info("Fetching all actors from Apify Store API...")
+        Actor.log.info("Fetching all Actors from Apify Store API...")
 
         all_actors: list[dict] = []
         seen_ids: set[str] = set()
@@ -186,7 +187,7 @@ class StoreCache:
                             seen_ids.add(actor_id)
                             all_actors.append(actor)
 
-                    Actor.log.info(f"Fetched {len(all_actors)}/{total_in_store} actors...")
+                    Actor.log.info(f"Fetched {len(all_actors)}/{total_in_store} Actors...")
 
                     # Check if we've fetched all
                     if offset + len(items) >= total_in_store:
@@ -195,14 +196,14 @@ class StoreCache:
                     offset += self.FETCH_LIMIT
 
                 except Exception as e:
-                    Actor.log.warning(f"Error fetching actors at offset {offset}: {e}")
+                    Actor.log.warning(f"Error fetching Actors at offset {offset}: {e}")
                     break
 
-        Actor.log.info(f"Fetched {len(all_actors)} unique actors from API (total in store: {total_in_store})")
+        Actor.log.info(f"Fetched {len(all_actors)} unique Actors from API (total in store: {total_in_store})")
 
         # Apply ML scoring if classifier is available (preserve original order)
         if self._classifier and all_actors:
-            Actor.log.info("Computing ML scores for all actors...")
+            Actor.log.info("Computing ML scores for all Actors...")
             all_actors = self._classifier.rerank_actors(all_actors, category_filter=None, sort=False)
             Actor.log.info("ML scoring complete")
 
@@ -219,7 +220,7 @@ class StoreCache:
         # Save to Key-Value Store
         await self._save_to_kv_store()
 
-        Actor.log.info(f"Database refresh complete: {len(all_actors)} actors cached")
+        Actor.log.info(f"Database refresh complete: {len(all_actors)} Actors cached")
 
     def get_actors(
         self,

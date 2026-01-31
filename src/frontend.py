@@ -711,6 +711,10 @@ def get_js() -> str:
         let currentOffset = 0;
         let currentTotal = 0;
         const PAGE_SIZE = 24;
+
+        // Extract token from URL query params (needed for Apify standby mode)
+        const urlParams = new URLSearchParams(window.location.search);
+        const apifyToken = urlParams.get('token') || '';
         const categoryNames = {
             '': 'All Actors',
             'SOCIAL_MEDIA': 'Social Media',
@@ -787,6 +791,7 @@ def get_js() -> str:
                 if (currentCategory) params.append('category', currentCategory);
                 params.append('limit', PAGE_SIZE.toString());
                 params.append('offset', currentOffset.toString());
+                if (apifyToken) params.append('token', apifyToken);
 
                 const response = await fetch(`/api/search?${params}`);
                 const data = await response.json();
