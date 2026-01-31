@@ -1,0 +1,14 @@
+{
+	"actorSpecification": 1,
+	"name": "apify-store-searcher",
+	"title": "Apify Store Searcher",
+	"description": "Search the Apify Store with ML-enhanced category filtering",
+	"version": "1.0",
+	"buildTag": "latest",
+	"meta": {
+		"templateId": "python-empty",
+		"generatedBy": "Claude Code with Claude Opus 4.5"
+	},
+	"dockerfile": "../Dockerfile",
+	"usesStandbyMode": true
+}
