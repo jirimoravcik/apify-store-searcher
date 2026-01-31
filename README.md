@@ -1,68 +1,142 @@
-## Python empty template
+# Apify Store Searcher
 
-<!-- This is an Apify template readme -->
+A web application to search and browse the [Apify Store](https://apify.com/store) with ML-enhanced category filtering. Built as an [Apify Actor](https://apify.com/actors) using Python.
 
-Start a new [web scraping](https://apify.com/web-scraping) project quickly and easily in Python with our empty project template. It provides a basic structure for the [Actor](https://apify.com/actors) with [Apify SDK](https://docs.apify.com/sdk/python/) and allows you to easily add your own functionality.
+## Features
 
-## Included features
+- **Full-text search** across all Actors in the Apify Store
+- **ML-powered category ranking** using TF-IDF and cosine similarity to surface the most relevant Actors per category
+- **Smart agent detection** - distinguishes true AI agents from scrapers that are miscategorized
+- **Neobrutalist UI** with Apify's brand colors
+- **Real-time search** with instant results
+- **Standby mode** for always-on deployment on Apify platform
 
-- **[Apify SDK](https://docs.apify.com/sdk/python/)** for Python - a toolkit for building Apify [Actors](https://apify.com/actors) and scrapers in Python
-- **[Input schema](https://docs.apify.com/platform/actors/development/input-schema)** - define and easily validate a schema for your Actor's input
-- **[Request queue](https://docs.apify.com/sdk/python/docs/concepts/storages#working-with-request-queues)** - queues into which you can put the URLs you want to scrape
-- **[Dataset](https://docs.apify.com/sdk/python/docs/concepts/storages#working-with-datasets)** - store structured data where each object stored has the same attributes
+## How It Works
 
-## How it works
+### ML Classification
 
-Insert your own code to `async with Actor:` block. You can use the [Apify SDK](https://docs.apify.com/sdk/python/) with any other Python library.
+The Actor fetches all Actors from the Apify Store API and computes ML relevance scores for each category using:
 
-## Resources
+1. **TF-IDF Vectorization** - Converts Actor titles, descriptions, and metadata into numerical vectors
+2. **Exemplar Matching** - Compares each Actor against hand-crafted exemplar descriptions for each category
+3. **Cosine Similarity** - Ranks Actors by how closely they match the category exemplars
+4. **Metadata Signals** - Applies adjustments based on:
+   - Keywords in title/description (e.g., "agent", "scraper", "LLM")
+   - Agentic payments whitelist status
+   - MCP/Model Context Protocol mentions
+   - Quality signals (user count, ratings, reviews)
 
-- [Python tutorials in Academy](https://docs.apify.com/academy/python)
-- [Video guide on getting data using Apify API](https://www.youtube.com/watch?v=ViYYDHSBAKM)
-- [Integration with Make, GitHub, Zapier, Google Drive, and other apps](https://apify.com/integrations)
-- A short guide on how to build web scrapers using code templates:
+This approach is particularly effective at filtering the **Agents** category, where many scrapers are miscategorized. True AI agents (with LLM integration, autonomous behavior, tool calling) are ranked higher than simple web scrapers.
 
-[web scraper template](https://www.youtube.com/watch?v=u-i-Korzf8w)
+### Architecture
 
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Frontend      │────▶│   HTTP Server    │────▶│   Store Cache   │
+│   (HTML/JS)     │     │   (Python)       │     │   (In-memory)   │
+└─────────────────┘     └──────────────────┘     └────────┬────────┘
+                                                          │
+                                                          ▼
+                                                 ┌─────────────────┐
+                                                 │  ML Classifier  │
+                                                 │  (TF-IDF)       │
+                                                 └─────────────────┘
+```
 
-## Getting started
+- **Frontend**: Neobrutalist single-page app with search and category filters
+- **HTTP Server**: Handles API requests and serves the frontend
+- **Store Cache**: Fetches all Actors from API, caches with auto-refresh every 5 minutes
+- **ML Classifier**: Computes category relevance scores using TF-IDF similarity
 
-For complete information [see this article](https://docs.apify.com/platform/actors/development#build-actor-locally). To run the Actor use the following command:
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Serves the web frontend |
+| `GET /api/search` | Search Actors with optional filters |
+| `GET /api/cache-stats` | Get cache statistics |
+| `GET /health` | Health check endpoint |
+
+### Search Parameters
+
+- `q` - Search query (searches title, description, username)
+- `category` - Filter by category (e.g., `AGENTS`, `AI`, `SOCIAL_MEDIA`)
+- `limit` - Max results to return (default: 50, max: 100)
+- `offset` - Pagination offset (default: 0)
+
+## Categories
+
+The following categories are supported:
+
+| Category | Description |
+|----------|-------------|
+| `AGENTS` | AI agents with LLM integration and autonomous capabilities |
+| `AI` | Machine learning and AI-powered tools |
+| `SOCIAL_MEDIA` | Social media scrapers and tools |
+| `LEAD_GENERATION` | Business contact and lead finding tools |
+| `ECOMMERCE` | E-commerce and product data tools |
+| `SEO_TOOLS` | SEO analysis and monitoring |
+| `JOBS` | Job listing scrapers |
+| `MCP_SERVERS` | Model Context Protocol servers |
+| `NEWS` | News and media scrapers |
+| `REAL_ESTATE` | Property and real estate data |
+| `DEVELOPER_TOOLS` | Developer utilities |
+| `TRAVEL` | Travel and booking data |
+| `VIDEOS` | Video platform tools |
+| `AUTOMATION` | Workflow automation tools |
+| `INTEGRATIONS` | Platform integration tools |
+| `OPEN_SOURCE` | Open source tools |
+| `OTHER` | Miscellaneous tools |
+
+## Local Development
+
+### Prerequisites
+
+- Python 3.10+
+- [Apify CLI](https://docs.apify.com/cli/)
+
+### Setup
 
 ```bash
+# Clone the repository
+git clone <repository-url>
+cd apify-store-searcher
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run locally
 apify run
 ```
 
-## Deploy to Apify
+The server will start at `http://localhost:8080`.
 
-### Connect Git repository to Apify
+## Deployment
 
-If you've created a Git repository for the project, you can easily connect to Apify:
+### Deploy to Apify Platform
 
-1. Go to [Actor creation page](https://console.apify.com/actors/new)
-2. Click on **Link Git Repository** button
+```bash
+# Login to Apify (requires API token)
+apify login
 
-### Push project on your local machine to Apify
+# Deploy the Actor
+apify push
+```
 
-You can also deploy the project on your local machine to Apify without the need for the Git repository.
+The Actor runs in **standby mode**, staying alive to serve requests with low latency.
 
-1. Log in to Apify. You will need to provide your [Apify API Token](https://console.apify.com/account/integrations) to complete this action.
+## Tech Stack
 
-    ```bash
-    apify login
-    ```
+- **Python 3.10+** - Runtime
+- **Apify SDK** - Actor framework and storage
+- **scikit-learn** - TF-IDF vectorization and cosine similarity
+- **NumPy** - Numerical computations
+- **httpx** - Async HTTP client
 
-2. Deploy your Actor. This command will deploy and build the Actor on the Apify Platform. You can find your newly created Actor under [Actors -> My Actors](https://console.apify.com/actors?tab=my).
+## License
 
-    ```bash
-    apify push
-    ```
-
-## Documentation reference
-
-To learn more about Apify and Actors, take a look at the following resources:
-
-- [Apify SDK for JavaScript documentation](https://docs.apify.com/sdk/js)
-- [Apify SDK for Python documentation](https://docs.apify.com/sdk/python)
-- [Apify Platform documentation](https://docs.apify.com/platform)
-- [Join our developer community on Discord](https://discord.com/invite/jyEM2PRvMU)
+ISC
