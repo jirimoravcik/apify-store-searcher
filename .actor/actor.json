@@ -10,5 +10,6 @@
 		"generatedBy": "Claude Code with Claude Opus 4.5"
 	},
 	"dockerfile": "../Dockerfile",
-	"usesStandbyMode": true
+	"usesStandbyMode": true,
+	"webServerSchema": "./openapi.json"
 }

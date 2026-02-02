@@ -1,0 +1,333 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Apify Store Searcher API",
+    "description": "Search the Apify Store with ML-enhanced category filtering. This Actor provides a REST API for searching and browsing Apify Store Actors with intelligent ranking powered by machine learning.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Apify",
+      "url": "https://apify.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://apify-store-searcher.apify.actor",
+      "description": "Apify Actor Standby endpoint"
+    }
+  ],
+  "paths": {
+    "/api/search": {
+      "get": {
+        "operationId": "searchActors",
+        "summary": "Search Apify Store Actors",
+        "description": "Search and filter Actors from the Apify Store. Supports full-text search across title, description, and username, as well as category filtering with ML-enhanced ranking.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search query to filter Actors by title, description, or username",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "instagram"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "Filter by category. When specified, results are ranked by ML-computed relevance score for that category.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SOCIAL_MEDIA",
+                "AI",
+                "AGENTS",
+                "LEAD_GENERATION",
+                "ECOMMERCE",
+                "SEO_TOOLS",
+                "JOBS",
+                "MCP_SERVERS",
+                "NEWS",
+                "REAL_ESTATE",
+                "DEVELOPER_TOOLS",
+                "TRAVEL",
+                "VIDEOS",
+                "AUTOMATION",
+                "INTEGRATIONS",
+                "OPEN_SOURCE",
+                "OTHER"
+              ],
+              "example": "SOCIAL_MEDIA"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results to return (max 100)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of results to skip for pagination",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful search response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cache-stats": {
+      "get": {
+        "operationId": "getCacheStats",
+        "summary": "Get cache statistics",
+        "description": "Returns statistics about the internal Actor cache, including total Actors indexed, last update time, and per-category counts.",
+        "responses": {
+          "200": {
+            "description": "Cache statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CacheStats"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "summary": "Health check endpoint",
+        "description": "Returns the health status of the Actor. Used for monitoring and readiness probes.",
+        "responses": {
+          "200": {
+            "description": "Actor is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["healthy"],
+                      "example": "healthy"
+                    }
+                  },
+                  "required": ["status"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Actor": {
+        "type": "object",
+        "description": "An Apify Actor from the store",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique Actor ID",
+            "example": "moJRLRc85AitArpNN"
+          },
+          "name": {
+            "type": "string",
+            "description": "Actor name (slug)",
+            "example": "instagram-scraper"
+          },
+          "username": {
+            "type": "string",
+            "description": "Username of the Actor author",
+            "example": "apify"
+          },
+          "title": {
+            "type": "string",
+            "description": "Human-readable Actor title",
+            "example": "Instagram Scraper"
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description of what the Actor does",
+            "example": "Scrape Instagram posts, profiles, places, photos, hashtags, comments, and more."
+          },
+          "categories": {
+            "type": "array",
+            "description": "Categories the Actor belongs to",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "SOCIAL_MEDIA"
+                },
+                "name": {
+                  "type": "string",
+                  "example": "Social Media"
+                }
+              }
+            }
+          },
+          "stats": {
+            "type": "object",
+            "description": "Usage statistics",
+            "properties": {
+              "totalRuns": {
+                "type": "integer",
+                "description": "Total number of times the Actor has been run"
+              },
+              "totalUsers": {
+                "type": "integer",
+                "description": "Total number of users who have run the Actor"
+              },
+              "totalBuilds": {
+                "type": "integer",
+                "description": "Total number of builds"
+              }
+            }
+          },
+          "pictureUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the Actor's icon/picture"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to the Actor's page on Apify Store"
+          },
+          "_ml_rank_score": {
+            "type": "number",
+            "description": "ML-computed overall relevance score (internal use)",
+            "example": 0.85
+          },
+          "_ml_scores": {
+            "type": "object",
+            "description": "Per-category ML relevance scores (internal use)",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        },
+        "required": ["id", "name", "username", "title"]
+      },
+      "SearchResponse": {
+        "type": "object",
+        "description": "Search results response",
+        "properties": {
+          "actors": {
+            "type": "array",
+            "description": "List of matching Actors",
+            "items": {
+              "$ref": "#/components/schemas/Actor"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Total number of matching Actors (before pagination)",
+            "example": 150
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum results per page",
+            "example": 50
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Number of results skipped",
+            "example": 0
+          }
+        },
+        "required": ["actors", "total", "limit", "offset"]
+      },
+      "CacheStats": {
+        "type": "object",
+        "description": "Cache statistics",
+        "properties": {
+          "total_actors": {
+            "type": "integer",
+            "description": "Total number of Actors in cache",
+            "example": 2500
+          },
+          "total_fetched": {
+            "type": "integer",
+            "description": "Total Actors fetched from API",
+            "example": 2500
+          },
+          "last_updated": {
+            "type": "number",
+            "description": "Unix timestamp of last cache update",
+            "example": 1706886400.123
+          },
+          "age_seconds": {
+            "type": "number",
+            "nullable": true,
+            "description": "Age of cache in seconds",
+            "example": 120.5
+          },
+          "categories": {
+            "type": "object",
+            "description": "Number of Actors per category",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "example": {
+              "SOCIAL_MEDIA": 450,
+              "AI": 200,
+              "ECOMMERCE": 380
+            }
+          }
+        },
+        "required": ["total_actors", "total_fetched", "last_updated", "age_seconds", "categories"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Error response",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message",
+            "example": "Search error: connection timeout"
+          }
+        },
+        "required": ["error"]
+      }
+    }
+  }
+}
