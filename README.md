@@ -1,6 +1,12 @@
 # Apify Store Searcher
 
-A web application to search and browse the [Apify Store](https://apify.com/store) with ML-enhanced category filtering. Built as an [Apify Actor](https://apify.com/actors) using Python.
+A web application to search and browse the [Apify Store](https://apify.com/store) with ML-enhanced category filtering.
+
+## Try It
+
+**Live URL:** https://jirimoravcik--apify-store-searcher.apify.actor
+
+Just open the link and start searching for Actors by name, category, or description.
 
 ## Features
 
